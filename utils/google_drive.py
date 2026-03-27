@@ -9,16 +9,13 @@ from PIL import Image
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-import json
 
 # ── Service (cached for the lifetime of the Streamlit process) ──────────────
 
 @st.cache_resource
 def _get_drive_service():
-    # creds = service_account.Credentials.from_service_account_info(
-    #     st.secrets["gcp_service_account"],
     creds = service_account.Credentials.from_service_account_info(
-    json.loads(st.secrets["gcp"]["service_account_json"]),
+        st.secrets["gcp_service_account"],
         scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
