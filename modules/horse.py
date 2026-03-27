@@ -27,7 +27,7 @@ except ImportError:
 
 # ── Label vocabulary ─────────────────────────────────────────────────────────
 
-MEMBRES = ["Left Front (LF)", "Right Front (RF)", "Left Hind (LH)", "Right Hind (RH)"]
+MEMBRES = ["Left Front (LF or L)", "Right Front (RF or R)", "Left Hind (LH)", "Right Hind (RH)"]
 
 ZONES = [
     "Front Foot",
@@ -141,13 +141,13 @@ def show():
                 return 0
 
         membre = st.selectbox(
-            "🐴 Membre (Limb)",
+            "🐴 Limb",
             MEMBRES,
             index=_default(MEMBRES, row.get("membre", "")),
             key=f"horse_membre_{current_idx}",
         )
         zone = st.selectbox(
-            "🦴 Zone anatomique",
+            "🦴 Body part",
             ZONES,
             index=_default(ZONES, row.get("zone", "")),
             key=f"horse_zone_{current_idx}",

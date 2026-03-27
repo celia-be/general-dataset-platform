@@ -5,3 +5,4 @@ dataset/
 *.pt
 list_drive_files.py
 secrets.toml
+docs/
