@@ -215,7 +215,7 @@ def show():
 
         manual_label = st.text_input(
             "✏️ Label (editable)",
-            value=initial_label,
+            #value=initial_label,
             key=f"horse_label_{current_idx}",
             help="Auto-generated from the dropdowns above. Edit if needed.",
         )
