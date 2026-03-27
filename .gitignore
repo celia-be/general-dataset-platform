@@ -1,0 +1,6 @@
+gcp/
+.streamlit/secrets.toml
+dataset/
+*.zip
+*.pt
+list_drive_files.py
