@@ -154,7 +154,7 @@ MODULES = [
     {
         "key":   "data",
         "icon":  "📊",
-        "title": "Data Annotations",
+        "title": "Data Validation",
         "desc":  "Label validation\n+ anomaly bounding boxes",
         "color": "#2a1a3a",
     },

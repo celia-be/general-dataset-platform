@@ -12,14 +12,16 @@ import gspread
 from google.oauth2 import service_account
 from datetime import datetime
 from typing import Optional
-
+import json
 
 # ── Client (cached for the lifetime of the Streamlit process) ────────────────
 
 @st.cache_resource
 def _get_gspread_client():
+    # creds = service_account.Credentials.from_service_account_info(
+    #     st.secrets["gcp_service_account"],
     creds = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
+    json.loads(st.secrets["gcp"]["service_account_json"]),
         scopes=[
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",

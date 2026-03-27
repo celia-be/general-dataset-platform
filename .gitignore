@@ -4,3 +4,4 @@ dataset/
 *.zip
 *.pt
 list_drive_files.py
+secrets.toml
