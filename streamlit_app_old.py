@@ -16,12 +16,12 @@ import streamlit as st
 # ── Page config (must be first Streamlit call) ───────────────────────────────
 st.set_page_config(
     page_title="Delara Annotation Platform",
-    page_icon="🐾",
+    #page_icon="🐾",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ── Global dark theme ─────────────────────────────────────────────────────────
+# ── Global dark theme (matches original app.py) ──────────────────────────────
 st.markdown(
     """
     <style>
@@ -71,49 +71,11 @@ st.markdown(
         background-color: #6C9DFF !important;
         border-color: #6C9DFF !important;
     }
-    /* Input fields background */
-    input, textarea {
+    /* Input fields */
+    input, textarea, select {
         background-color: #111111 !important;
         color: #F5F5F5 !important;
         border-color: #333333 !important;
-    }
-    /* ── Selectbox / Dropdown fixes ──────────────────────────────────────────
-       The dropdown trigger (closed state) */
-    [data-testid="stSelectbox"] div[data-baseweb="select"] > div:first-child {
-        background-color: #1a1a2e !important;
-        color: #F5F5F5 !important;
-        border-color: #333 !important;
-    }
-    /* The selected value text inside the trigger */
-    [data-testid="stSelectbox"] [data-baseweb="select"] span,
-    [data-testid="stSelectbox"] [data-baseweb="select"] div {
-        color: #F5F5F5 !important;
-    }
-    /* The floating dropdown popup container */
-    [data-baseweb="popover"],
-    [data-baseweb="menu"],
-    ul[data-baseweb="menu"] {
-        background-color: #1a1a2e !important;
-        border: 1px solid #333 !important;
-    }
-    /* Each option in the dropdown list */
-    [role="option"],
-    [data-baseweb="menu"] li,
-    ul[data-baseweb="menu"] li {
-        background-color: #1a1a2e !important;
-        color: #F5F5F5 !important;
-    }
-    /* Hovered option */
-    [role="option"]:hover,
-    [data-baseweb="menu"] li:hover {
-        background-color: #2a2a4e !important;
-        color: #FFFFFF !important;
-    }
-    /* Selected / highlighted option */
-    [aria-selected="true"],
-    [data-baseweb="menu"] li[aria-selected="true"] {
-        background-color: #4F8BF9 !important;
-        color: #FFFFFF !important;
     }
     /* Module cards */
     .module-card {

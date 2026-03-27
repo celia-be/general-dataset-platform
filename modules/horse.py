@@ -2,21 +2,25 @@
 Horse X-Ray Annotation module.
 
 What the annotator does:
-  1. View the X-ray image (with zoom)
-  2. Open the PDF report in Google Drive
+  1. View the X-ray image (with zoom) on the left
+  2. Read the PDF report embedded in the centre panel
   3. Select Membre / Zone / Vue from dropdowns
-  4. Click "Save & Next" → writes manual_label to Google Sheets
+  4. Edit the auto-generated manual_label if needed
+  5. Add a free-text report_description (findings / notes from the report)
+  6. Click "Save & Next" → writes all fields to Google Sheets
 
 Progress is persisted in Google Sheets: on reload, the app resumes
 from the first row where status != 'done'.
 
 Expected Google Sheet columns:
   image_id | image_name | report_id | report_name |
-  membre | zone | vue | manual_label | status | annotated_at
+  membre | zone | vue | manual_label | report_description |
+  Consultation Date | status | annotated_at
 """
 
 import streamlit as st
-from utils.google_drive import load_image_from_drive, drive_view_url, resize_for_display
+import streamlit.components.v1 as components
+from utils.google_drive import load_image_from_drive, resize_for_display
 from utils.google_sheets import load_sheet_df, save_annotation, get_current_index, progress_stats
 
 try:
@@ -25,9 +29,14 @@ try:
 except ImportError:
     HAS_ZOOM = False
 
-# ── Label vocabulary ─────────────────────────────────────────────────────────
+# ── Label vocabulary ──────────────────────────────────────────────────────────
 
-MEMBRES = ["Left Front (LF or L)", "Right Front (RF or R)", "Left Hind (LH)", "Right Hind (RH)"]
+MEMBRES = [
+    "Left Front (LF or L)",
+    "Right Front (RF or R)",
+    "Left Hind (LH)",
+    "Right Hind (RH)",
+]
 
 ZONES = [
     "Front Foot",
@@ -53,13 +62,13 @@ VUES = [
 
 # Maps dropdown label → short English term used in manual_label
 _MEMBRE_SHORT = {
-    "Left Front (LF)":  "Left Front",
-    "Right Front (RF)": "Right Front",
-    "Left Hind (LH)":   "Left Hind",
-    "Right Hind (RH)":  "Right Hind",
+    "Left Front (LF or L)":  "Left Front",
+    "Right Front (RF or R)": "Right Front",
+    "Left Hind (LH)":        "Left Hind",
+    "Right Hind (RH)":       "Right Hind",
 }
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _header():
     col_back, col_title = st.columns([1, 8])
@@ -72,7 +81,15 @@ def _header():
         st.markdown("## 🐴 Horse X-Ray Annotation")
 
 
-# ── Main entry point ─────────────────────────────────────────────────────────
+def _default(options, saved_val):
+    """Return index of saved_val in options, or 0 if not found."""
+    try:
+        return options.index(str(saved_val)) if str(saved_val) in options else 0
+    except ValueError:
+        return 0
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
 
 def show():
     _header()
@@ -104,7 +121,7 @@ def show():
 
     row = df.iloc[current_idx]
 
-    # ── Load image from Drive ────────────────────────────────────────────────
+    # ── Load X-ray image from Drive ───────────────────────────────────────────
     with st.spinner("Loading image from Google Drive…"):
         try:
             img = load_image_from_drive(str(row["image_id"]))
@@ -114,56 +131,104 @@ def show():
 
     img_display = resize_for_display(img, max_px=600)
 
-    # ── Layout: image left | form right ──────────────────────────────────────
-    col_img, col_form = st.columns([1.6, 1])
+    # ── Read consultation date (pre-filled in Sheet, read-only) ──────────────
+    consultation_date = str(row.get("consultation_date", "")).strip()
+    # Also accept the capitalised variant used in legacy sheets
+    if not consultation_date:
+        consultation_date = str(row.get("Consultation Date", "")).strip()
 
+    # ── Three-column layout: X-ray | PDF | Form ───────────────────────────────
+    col_img, col_pdf, col_form = st.columns([1.3, 1.5, 1])
+
+    # ── Left: X-ray image ─────────────────────────────────────────────────────
     with col_img:
+        st.markdown(f"**Image:** `{row.get('image_name', row['image_id'])}`")
+        if consultation_date:
+            st.markdown(
+                f"<div style='background:#1a3a5c; border-left:4px solid #4F8BF9; "
+                f"border-radius:6px; padding:6px 12px; margin-bottom:8px; font-size:0.9rem;'>"
+                f"📅 <b>Consultation date:</b>&nbsp; {consultation_date}</div>",
+                unsafe_allow_html=True,
+            )
         if HAS_ZOOM:
-            image_zoom(img_display, mode="mousemove", size=580, zoom_factor=2.5)
+            image_zoom(img_display, mode="mousemove", size=550, zoom_factor=2.5)
         else:
             st.image(img_display, use_container_width=True)
 
-        # Link to PDF report if available
+    # ── Centre: embedded PDF report ───────────────────────────────────────────
+    with col_pdf:
         report_id = str(row.get("report_id", "")).strip()
         if report_id:
-            report_name = row.get("report_name", "Open report")
-            st.link_button(f"📄 {report_name}", drive_view_url(report_id))
+            report_name = row.get("report_name", "Report")
+            header_parts = [f"**Report:** `{report_name}`"]
+            if consultation_date:
+                header_parts.append(
+                    f"&nbsp;&nbsp;📅 <span style='color:#4F8BF9; font-weight:600;'>{consultation_date}</span>"
+                )
+            st.markdown("  ".join(header_parts), unsafe_allow_html=True)
+            if consultation_date:
+                st.caption("⬆ Scroll to this date in the report to find the relevant section.")
+            pdf_embed_url = f"https://drive.google.com/file/d/{report_id}/preview"
+            components.iframe(pdf_embed_url, height=600, scrolling=True)
+        else:
+            st.info("No report linked to this image.")
 
+    # ── Right: annotation form ────────────────────────────────────────────────
     with col_form:
-        st.markdown(f"**Image:** `{row.get('image_name', row['image_id'])}`")
+        st.markdown("### Annotation")
+        if consultation_date:
+            st.markdown(
+                f"<div style='background:#1a3a5c; border-left:4px solid #4F8BF9; "
+                f"border-radius:6px; padding:5px 10px; margin-bottom:6px; font-size:0.85rem;'>"
+                f"📅 {consultation_date}</div>",
+                unsafe_allow_html=True,
+            )
         st.markdown("---")
 
-        # Pre-fill dropdowns with previously saved values (if re-editing)
-        def _default(options, saved_val):
-            try:
-                return options.index(str(saved_val)) if str(saved_val) in options else 0
-            except ValueError:
-                return 0
-
         membre = st.selectbox(
-            "🐴 Limb",
+            "🐴 Limb (Membre)",
             MEMBRES,
             index=_default(MEMBRES, row.get("membre", "")),
             key=f"horse_membre_{current_idx}",
         )
         zone = st.selectbox(
-            "🦴 Body part",
+            "🦴 Body part (Zone)",
             ZONES,
             index=_default(ZONES, row.get("zone", "")),
             key=f"horse_zone_{current_idx}",
         )
         vue = st.selectbox(
-            "📐 Vue radiographique",
+            "📐 Radiographic view (Vue)",
             VUES,
             index=_default(VUES, row.get("vue", "")),
             key=f"horse_vue_{current_idx}",
         )
 
-        # Auto-compose the manual_label exactly as expected by the CSV spec
-        manual_label = f"{_MEMBRE_SHORT[membre]} {zone} | {vue}"
+        # Auto-compose label, but let the annotator edit it
+        auto_label = f"{_MEMBRE_SHORT[membre]} {zone} | {vue}"
+        saved_label = str(row.get("manual_label", "")).strip()
+        # Use the saved label if it exists and differs from the auto one,
+        # otherwise use the freshly generated one
+        initial_label = saved_label if saved_label else auto_label
 
         st.markdown("---")
-        st.info(f"**Label généré :**  `{manual_label}`")
+
+        manual_label = st.text_input(
+            "✏️ Label (editable)",
+            value=initial_label,
+            key=f"horse_label_{current_idx}",
+            help="Auto-generated from the dropdowns above. Edit if needed.",
+        )
+
+        # Report description (free text)
+        saved_desc = str(row.get("report_description", "")).strip()
+        report_description = st.text_area(
+            "📝 Report description",
+            value=saved_desc,
+            height=120,
+            key=f"horse_desc_{current_idx}",
+            placeholder="Copy or summarise the relevant line(s) from the PDF report…",
+        )
 
         st.markdown("")  # spacing
 
@@ -173,10 +238,11 @@ def show():
                 sheet_name,
                 current_idx,
                 {
-                    "membre":       membre,
-                    "zone":         zone,
-                    "vue":          vue,
-                    "manual_label": manual_label,
+                    "membre":             membre,
+                    "zone":               zone,
+                    "vue":                vue,
+                    "manual_label":       manual_label,
+                    "report_description": report_description,
                 },
             )
             st.rerun()
