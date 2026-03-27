@@ -4,15 +4,8 @@ Google Sheets utility — read annotation progress and write results.
 Each module has its own Sheet (configured in secrets.toml).
 Rows start with status="pending" and are updated to status="done" after annotation.
 This gives automatic resume-from-where-you-left-off across sessions.
-
-Rate-limit strategy
--------------------
-• load_sheet_df  : cached 30 s  (busted explicitly after every write)
-• _get_headers   : cached 10 min (column names almost never change)
-• All API calls  : wrapped in _retry() — exponential backoff on 429 / 5xx
 """
 
-import time
 import streamlit as st
 import pandas as pd
 import gspread
@@ -25,34 +18,16 @@ import json
 
 @st.cache_resource
 def _get_gspread_client():
+    # creds = service_account.Credentials.from_service_account_info(
+    #     st.secrets["gcp_service_account"],
     creds = service_account.Credentials.from_service_account_info(
-        json.loads(st.secrets["gcp"]["service_account_json"]),
+    json.loads(st.secrets["gcp"]["service_account_json"]),
         scopes=[
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
         ],
     )
     return gspread.authorize(creds)
-
-
-# ── Retry helper ─────────────────────────────────────────────────────────────
-
-def _retry(fn, *args, retries: int = 5, base_delay: float = 2.0, **kwargs):
-    """
-    Call fn(*args, **kwargs), retrying on quota / server errors.
-    Delays: 2 s, 4 s, 8 s, 16 s, 32 s  (exponential backoff).
-    Raises on the last attempt or for non-retryable errors.
-    """
-    for attempt in range(retries):
-        try:
-            return fn(*args, **kwargs)
-        except gspread.exceptions.APIError as exc:
-            code = exc.response.status_code if hasattr(exc, "response") else 429
-            if code in (429, 500, 502, 503) and attempt < retries - 1:
-                wait = base_delay * (2 ** attempt)
-                time.sleep(wait)
-            else:
-                raise
 
 
 # ── Worksheet access ─────────────────────────────────────────────────────────
@@ -62,26 +37,13 @@ def _get_worksheet(spreadsheet_id: str, sheet_name: str) -> gspread.Worksheet:
     return client.open_by_key(spreadsheet_id).worksheet(sheet_name)
 
 
-# ── Headers cache (long TTL — column names almost never change) ───────────────
+# ── Read (short TTL so progress is always fresh after a save) ────────────────
 
-@st.cache_data(ttl=600, show_spinner=False)
-def _get_headers(spreadsheet_id: str, sheet_name: str) -> list:
-    """Return the first row (column names). Cached 10 min."""
-    ws = _get_worksheet(spreadsheet_id, sheet_name)
-    return _retry(ws.row_values, 1)
-
-
-# ── Read (TTL long enough to absorb reruns; busted after every write) ─────────
-
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=8, show_spinner=False)
 def load_sheet_df(spreadsheet_id: str, sheet_name: str) -> pd.DataFrame:
-    """
-    Load the full sheet as a DataFrame.
-    Cached for 30 s — explicitly cleared after every save_annotation() call,
-    so the annotator always sees up-to-date progress immediately after saving.
-    """
+    """Load the full sheet as a DataFrame. Cached for 8 s to absorb reruns."""
     ws = _get_worksheet(spreadsheet_id, sheet_name)
-    records = _retry(ws.get_all_records, default_blank="")
+    records = ws.get_all_records(default_blank="")
     return pd.DataFrame(records) if records else pd.DataFrame()
 
 
@@ -96,27 +58,26 @@ def save_annotation(
 ) -> None:
     """
     Write annotation fields + status/timestamp for one row.
-    df_index 0 → Sheet row 2  (row 1 is the header).
-    Uses the cached headers to avoid an extra read request on every save.
+    df_index 0 → Sheet row 2 (row 1 is the header).
     """
     if mark_done:
         updates["status"] = "done"
         updates["annotated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    ws      = _get_worksheet(spreadsheet_id, sheet_name)
-    headers = _get_headers(spreadsheet_id, sheet_name)   # ← cached, no extra quota hit
-    sheet_row = df_index + 2                             # row 1 = header, data starts row 2
+    ws = _get_worksheet(spreadsheet_id, sheet_name)
+    headers = ws.row_values(1)           # column names
+    sheet_row = df_index + 2            # gspread rows are 1-based; row 1 = header
 
     cells = []
     for col_name, value in updates.items():
         if col_name in headers:
-            col_idx = headers.index(col_name) + 1        # 1-based
+            col_idx = headers.index(col_name) + 1   # 1-based
             cells.append(gspread.Cell(sheet_row, col_idx, str(value) if value is not None else ""))
 
     if cells:
-        _retry(ws.update_cells, cells, value_input_option="USER_ENTERED")
+        ws.update_cells(cells, value_input_option="USER_ENTERED")
 
-    # Bust the read cache so the next load_sheet_df() sees the updated row
+    # Bust the cache so the next load_sheet_df() sees the update
     load_sheet_df.clear()
 
 
@@ -133,7 +94,7 @@ def get_current_index(df: pd.DataFrame) -> Optional[int]:
     return int(pending.index[0]) if not pending.empty else None
 
 
-def progress_stats(df: pd.DataFrame) -> tuple:
+def progress_stats(df: pd.DataFrame) -> tuple[int, int]:
     """Return (done_count, total_count)."""
     if df.empty or "status" not in df.columns:
         return 0, 0
