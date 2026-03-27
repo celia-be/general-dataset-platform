@@ -104,7 +104,7 @@ if "auth" not in st.session_state:
 module = st.session_state.module
 
 if module == "horse" and st.session_state.auth.get("horse"):
-    from modules.horse import show
+    from modules.horse_old import show
     show()
     st.stop()
 

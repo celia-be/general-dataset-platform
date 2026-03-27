@@ -13,8 +13,8 @@ Progress is persisted in Google Sheets: on reload, the app resumes
 from the first row where status != 'done'.
 
 Expected Google Sheet columns:
-  image_id | image_name | report_id | report_name |
-  membre | zone | vue | manual_label | report_description |
+  image_id | anonymized_image | report_id | anonymized_report |
+  membre | body_part | view | label | custom_report |
   Consultation Date | status | annotated_at
 """
 
@@ -126,7 +126,7 @@ def show():
         try:
             img = load_image_from_drive(str(row["image_id"]))
         except Exception as e:
-            st.error(f"Could not load image `{row.get('image_name', row['image_id'])}`: {e}")
+            st.error(f"Could not load image `{row.get('anonymized_image', row['image_id'])}`: {e}")
             return
 
     img_display = resize_for_display(img, max_px=600)
@@ -142,7 +142,7 @@ def show():
 
     # ── Left: X-ray image ─────────────────────────────────────────────────────
     with col_img:
-        st.markdown(f"**Image:** `{row.get('image_name', row['image_id'])}`")
+        st.markdown(f"**Image:** `{row.get('anonymized_image', row['image_id'])}`")
         if consultation_date:
             st.markdown(
                 f"<div style='background:#1a3a5c; border-left:4px solid #4F8BF9; "
@@ -159,7 +159,7 @@ def show():
     with col_pdf:
         report_id = str(row.get("report_id", "")).strip()
         if report_id:
-            report_name = row.get("report_name", "Report")
+            report_name = row.get("anonymized_report", "Report")
             header_parts = [f"**Report:** `{report_name}`"]
             if consultation_date:
                 header_parts.append(
@@ -194,19 +194,19 @@ def show():
         zone = st.selectbox(
             "🦴 Body part (Zone)",
             ZONES,
-            index=_default(ZONES, row.get("zone", "")),
+            index=_default(ZONES, row.get("body_part", "")),
             key=f"horse_zone_{current_idx}",
         )
         vue = st.selectbox(
             "📐 Radiographic view (Vue)",
             VUES,
-            index=_default(VUES, row.get("vue", "")),
+            index=_default(VUES, row.get("view", "")),
             key=f"horse_vue_{current_idx}",
         )
 
         # Auto-compose label, but let the annotator edit it
         auto_label = f"{_MEMBRE_SHORT[membre]} {zone} | {vue}"
-        saved_label = str(row.get("manual_label", "")).strip()
+        saved_label = str(row.get("label", "")).strip()
         # Use the saved label if it exists and differs from the auto one,
         # otherwise use the freshly generated one
         initial_label = saved_label if saved_label else auto_label
@@ -222,7 +222,7 @@ def show():
         )
 
         # Report description (free text)
-        saved_desc = str(row.get("report_description", "")).strip()
+        saved_desc = str(row.get("custom_report", "")).strip()
         report_description = st.text_area(
             "📝 Report description",
             value=saved_desc,
@@ -240,10 +240,10 @@ def show():
                 current_idx,
                 {
                     "membre":             membre,
-                    "zone":               zone,
-                    "vue":                vue,
-                    "manual_label":       manual_label,
-                    "report_description": report_description,
+                    "body_part":               zone,
+                    "view":                vue,
+                    "label":       manual_label,
+                    "custom_report": report_description,
                 },
             )
             st.rerun()

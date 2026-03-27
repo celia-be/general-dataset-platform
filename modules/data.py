@@ -12,7 +12,7 @@ All data now lives in Google Drive (images) + Google Sheets (CSV),
 giving automatic session persistence — no more lost progress on sleep/restart.
 
 Expected Google Sheet columns:
-  image_id | image_name | proposed_label | report_description |
+  image_id | anonymized_image | proposed_label | report_description |
   confirmed_label | bbox | status | annotated_at
 """
 
