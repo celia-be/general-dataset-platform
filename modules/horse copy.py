@@ -21,7 +21,7 @@ Expected Google Sheet columns:
 import streamlit as st
 import streamlit.components.v1 as components
 from utils.google_drive import load_image_from_drive, resize_for_display
-from utils.google_sheets import load_sheet_df, save_annotation, append_annotation_row, get_current_index, progress_stats
+from utils.google_sheets import load_sheet_df, save_annotation, get_current_index, progress_stats
 
 try:
     from streamlit_image_zoom import image_zoom
@@ -233,69 +233,17 @@ def show():
 
         st.markdown("")  # spacing
 
-        # ── Extra labels (multiple anomalies) ─────────────────────────────────
-        extra_ids_key = f"horse_extra_labels_{current_idx}"
-        if extra_ids_key not in st.session_state:
-            st.session_state[extra_ids_key] = []
-
-        if st.session_state[extra_ids_key]:
-            st.markdown("**Additional labels:**")
-        for uid in list(st.session_state[extra_ids_key]):
-            c1, c2 = st.columns([5, 1])
-            with c1:
-                st.text_input(
-                    "✏️ Extra label",
-                    key=f"horse_extra_{uid}",
-                    placeholder="Eg: Lipping, Bone remodeling, Fragment, etc.",
-                    label_visibility="collapsed",
-                )
-            with c2:
-                if st.button("✕", key=f"horse_rm_{uid}"):
-                    st.session_state[extra_ids_key].remove(uid)
-                    st.rerun()
-
-        if st.button("➕ Add Label", key=f"horse_add_label_{current_idx}"):
-            import uuid
-            st.session_state[extra_ids_key].append(str(uuid.uuid4())[:8])
-            st.rerun()
-
-        st.markdown("")  # spacing
-
         if st.button("💾 Save & Next →", use_container_width=True, key=f"horse_save_{current_idx}"):
             save_annotation(
                 sheet_id,
                 sheet_name,
                 current_idx,
                 {
-                    "membre":        membre,
-                    "body_part":     zone,
-                    "view":          vue,
-                    "label":         manual_label,
+                    "membre":             membre,
+                    "body_part":               zone,
+                    "view":                vue,
+                    "label":       manual_label,
                     "custom_report": report_description,
                 },
             )
-
-            # Append one new row per extra label
-            extra_labels = [
-                st.session_state.get(f"horse_extra_{uid}", "").strip()
-                for uid in st.session_state.get(extra_ids_key, [])
-                if st.session_state.get(f"horse_extra_{uid}", "").strip()
-            ]
-            source_row = row.to_dict()
-            for extra_label in extra_labels:
-                append_annotation_row(
-                    sheet_id,
-                    sheet_name,
-                    source_row,
-                    {
-                        "membre":        membre,
-                        "body_part":     zone,
-                        "view":          vue,
-                        "label":         extra_label,
-                        "custom_report": report_description,
-                    },
-                )
-
-            # Reset extra labels for this image
-            st.session_state[extra_ids_key] = []
             st.rerun()
