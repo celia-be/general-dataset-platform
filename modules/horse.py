@@ -228,7 +228,7 @@ def show():
             value=saved_desc,
             height=120,
             key=f"horse_desc_{current_idx}",
-            placeholder="Copy or summarise the relevant line(s) from the PDF report…",
+            placeholder="Copy/Paste the detailed report description…",
         )
 
         st.markdown("")  # spacing
