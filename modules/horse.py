@@ -217,8 +217,8 @@ def show():
             "✏️ Label (editable)",
             #value=initial_label,
             key=f"horse_label_{current_idx}",
-            help="Auto-generated from the dropdowns above. Edit if needed.",
-            placeholder="Anomaly described in the report. Eg: Lipping, Bone remodeling, Fragment, etc."
+            help="Anomaly described in the report.",
+            placeholder="Eg: Lipping, Bone remodeling, Fragment, etc."
         )
 
         # Report description (free text)

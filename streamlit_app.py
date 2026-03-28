@@ -82,6 +82,12 @@ st.markdown(
         color: #888888 !important;
         opacity: 1 !important;
     }
+    /* Help tooltip text */
+    [data-testid="stTooltipContent"],
+    [data-baseweb="tooltip"] div {
+        color: #F5F5F5 !important;
+        background-color: #1a1a2e !important;
+    }
     /* ── Selectbox / Dropdown fixes ──────────────────────────────────────────
        The dropdown trigger (closed state) */
     [data-testid="stSelectbox"] div[data-baseweb="select"] > div:first-child {
