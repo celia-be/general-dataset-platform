@@ -212,7 +212,7 @@ def show():
             key=f"pets_view_{current_idx}",
         )
         confirmed_label = st.text_input(
-            "✏️ Free-text label (optional)",
+            "✏️ Label (anomaly seen on radiograph)",
             value=str(row.get("confirmed_label", "") or ""),
             key=f"pets_label_{current_idx}",
         )
