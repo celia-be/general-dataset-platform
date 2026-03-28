@@ -77,6 +77,11 @@ st.markdown(
         color: #F5F5F5 !important;
         border-color: #333333 !important;
     }
+    /* Placeholder text */
+    input::placeholder, textarea::placeholder {
+        color: #888888 !important;
+        opacity: 1 !important;
+    }
     /* ── Selectbox / Dropdown fixes ──────────────────────────────────────────
        The dropdown trigger (closed state) */
     [data-testid="stSelectbox"] div[data-baseweb="select"] > div:first-child {
