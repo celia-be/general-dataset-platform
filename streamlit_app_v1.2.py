@@ -16,6 +16,7 @@ import streamlit as st
 # ── Page config (must be first Streamlit call) ───────────────────────────────
 st.set_page_config(
     page_title="Delara Annotation Platform",
+    #page_icon="🐾",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -70,26 +71,61 @@ st.markdown(
         background-color: #6C9DFF !important;
         border-color: #6C9DFF !important;
     }
-    /* Input fields */
-    input, textarea, select {
+    /* Input fields background */
+    input, textarea {
         background-color: #111111 !important;
         color: #F5F5F5 !important;
         border-color: #333333 !important;
     }
-    /* Dropdown fix — readable text on dark background */
+    /* Placeholder text */
+    input::placeholder, textarea::placeholder {
+        color: #888888 !important;
+        opacity: 1 !important;
+    }
+    /* Help tooltip text */
+    [data-testid="stTooltipContent"],
+    [data-baseweb="tooltip"] div {
+        color: #F5F5F5 !important;
+        background-color: #1a1a2e !important;
+    }
+    /* ── Selectbox / Dropdown fixes ──────────────────────────────────────────
+       The dropdown trigger (closed state) */
+    [data-testid="stSelectbox"] div[data-baseweb="select"] > div:first-child {
+        background-color: #1a1a2e !important;
+        color: #F5F5F5 !important;
+        border-color: #333 !important;
+    }
+    /* The selected value text inside the trigger */
+    [data-testid="stSelectbox"] [data-baseweb="select"] span,
+    [data-testid="stSelectbox"] [data-baseweb="select"] div {
+        color: #F5F5F5 !important;
+    }
+    /* The floating dropdown popup container */
     [data-baseweb="popover"],
     [data-baseweb="menu"],
     ul[data-baseweb="menu"] {
         background-color: #1a1a2e !important;
         border: 1px solid #333 !important;
     }
+    /* Each option in the dropdown list */
     [role="option"],
-    [data-baseweb="menu"] li {
+    [data-baseweb="menu"] li,
+    ul[data-baseweb="menu"] li {
         background-color: #1a1a2e !important;
         color: #F5F5F5 !important;
     }
-    [role="option"]:hover { background-color: #2a2a4e !important; }
-    [aria-selected="true"] { background-color: #4F8BF9 !important; color: #FFFFFF !important; }
+    /* Hovered option */
+    [role="option"]:hover,
+    [data-baseweb="menu"] li:hover {
+        background-color: #2a2a4e !important;
+        color: #FFFFFF !important;
+    }
+    /* Selected / highlighted option */
+    [aria-selected="true"],
+    [data-baseweb="menu"] li[aria-selected="true"] {
+        background-color: #4F8BF9 !important;
+        color: #FFFFFF !important;
+    }
     /* Module cards */
     .module-card {
         background: #111111;
@@ -131,11 +167,6 @@ elif module == "data" and st.session_state.auth.get("data"):
     show()
     st.stop()
 
-elif module == "cheval_upload" and st.session_state.auth.get("cheval_upload"):
-    from modules.cheval_upload import show
-    show()
-    st.stop()
-
 # ── Portal page ──────────────────────────────────────────────────────────────
 st.markdown(
     """
@@ -153,45 +184,40 @@ st.markdown(
 )
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Module cards ──────────────────────────────────────────────────────────────
+# ── Three module cards ────────────────────────────────────────────────────────
 MODULES = [
     {
         "key":   "horse",
         "icon":  "🐴",
         "title": "Horse Annotation",
         "desc":  "X-ray radiograph labelling\n(zone · view · limb)",
-        "color": "#4F8BF9",
+        "color": "#1a3a5c",
     },
     {
         "key":   "pets",
         "icon":  "🐾",
         "title": "Pets Annotations",
         "desc":  "Species · body part · view\n+ bounding boxes",
-        "color": "#3dba6e",
+        "color": "#1a3a2a",
     },
     {
         "key":   "data",
         "icon":  "📊",
         "title": "Data Validation",
         "desc":  "Label validation\n+ anomaly bounding boxes",
-        "color": "#9b59b6",
-    },
-    {
-        "key":   "cheval_upload",
-        "icon":  "🩻",
-        "title": "Images Chevaux",
-        "desc":  "Upload · anonymisation\n+ bounding boxes & label",
-        "color": "#e67e22",
+        "color": "#2a1a3a",
     },
 ]
 
-cols = st.columns(4, gap="large")
+cols = st.columns(3, gap="large")
 
 for col, mod in zip(cols, MODULES):
     with col:
+        # Card header
         st.markdown(
             f"""
-            <div class="module-card" style="border-top: 4px solid {mod['color']}99;">
+            <div class="module-card" style="border-top: 4px solid {mod['color'].replace('#1a', '#4')
+                                             .replace('#2a', '#6')}99;">
                 <div style="font-size:52px; line-height:1.2">{mod['icon']}</div>
                 <h3 style="margin:12px 0 6px 0; font-size:1.2rem">{mod['title']}</h3>
                 <p style="color:#888; font-size:0.85rem; white-space:pre-line; margin:0 0 16px 0">
@@ -206,6 +232,7 @@ for col, mod in zip(cols, MODULES):
 
         key = mod["key"]
 
+        # Password input + enter button
         pwd = st.text_input(
             "Password",
             type="password",
@@ -214,7 +241,7 @@ for col, mod in zip(cols, MODULES):
             placeholder="🔑 Enter password…",
         )
 
-        if st.button("Enter  →", key=f"btn_{key}", use_container_width=True):
+        if st.button(f"Enter  →", key=f"btn_{key}", use_container_width=True):
             expected = st.secrets.get("passwords", {}).get(key, "")
             if pwd and pwd == expected:
                 st.session_state.auth[key] = True
