@@ -4,9 +4,9 @@ Cheval Upload — Horse X-Ray Upload & Annotation module (Olivier).
 Workflow:
   1. Upload an X-ray image (PNG/JPEG)
   2. Preview & adjust anonymisation crop (top + bottom bands removed)
-  3. Upload anonymised image to Google Drive folder
+  3. Upload anonymised image to Google Cloud Storage
   4. Draw bounding boxes + enter a free-text label
-  5. Save → writes image_id, image_name, label, bbox to Google Sheets
+  5. Save → writes image_id (GCS URI), image_name, label, bbox to Google Sheets
 
 Expected Google Sheet columns:
   image_id | image_name | label | bbox | status | uploaded_at | annotated_at
@@ -16,8 +16,8 @@ secrets.toml additions needed:
   cheval_upload_sheet_id   = "..."
   cheval_upload_sheet_name = "..."
 
-  [drive]
-  cheval_upload_folder_id  = "..."   # ID of "Data Images Chevaux - Olivier"
+  [gcs]
+  bucket_name = "delara-cheval-upload"   # your GCS bucket name
 
   [passwords]
   cheval_upload = "..."
@@ -30,7 +30,7 @@ from datetime import datetime
 import streamlit as st
 from PIL import Image, ImageDraw
 
-from utils.google_drive import upload_pil_image_to_drive
+from utils.google_drive import upload_pil_image_to_gcs
 from utils.google_sheets import append_row_to_sheet, save_annotation
 
 try:
@@ -103,7 +103,7 @@ def _draw_boxes(img: Image.Image, clicks: list, box_size: int = BBOX_SIZE) -> Im
 
 # ── Step 1 : Upload + crop preview ───────────────────────────────────────────
 
-def _show_upload(sheet_id: str, sheet_name: str, folder_id: str):
+def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
     st.markdown("### Étape 1 — Chargement de l'image")
     st.caption("Les bandes en haut et en bas seront supprimées pour retirer les informations médicales.")
 
@@ -150,8 +150,8 @@ def _show_upload(sheet_id: str, sheet_name: str, folder_id: str):
         orig_stem = uploaded.name.rsplit(".", 1)[0]
         filename  = f"{orig_stem}_anon_{ts}.png"
 
-        with st.spinner("Upload vers Google Drive…"):
-            file_id = upload_pil_image_to_drive(anon_full, filename, folder_id)
+        with st.spinner("Upload vers Google Cloud Storage…"):
+            file_id = upload_pil_image_to_gcs(anon_full, filename, bucket_name)
 
         with st.spinner("Enregistrement dans Google Sheets…"):
             sheet_idx = append_row_to_sheet(
@@ -272,9 +272,9 @@ def _show_annotate(sheet_id: str, sheet_name: str):
 def show():
     _header()
 
-    sheet_id   = st.secrets["sheets"]["cheval_upload_sheet_id"]
-    sheet_name = st.secrets["sheets"]["cheval_upload_sheet_name"]
-    folder_id  = st.secrets["drive"]["cheval_upload_folder_id"]
+    sheet_id    = st.secrets["sheets"]["cheval_upload_sheet_id"]
+    sheet_name  = st.secrets["sheets"]["cheval_upload_sheet_name"]
+    bucket_name = st.secrets["gcs"]["bucket_name"]
 
     if "cheval_step"  not in st.session_state:
         st.session_state.cheval_step  = "upload"
@@ -288,4 +288,4 @@ def show():
         _show_annotate(sheet_id, sheet_name)
     else:
         st.session_state.cheval_step = "upload"
-        _show_upload(sheet_id, sheet_name, folder_id)
+        _show_upload(sheet_id, sheet_name, bucket_name)

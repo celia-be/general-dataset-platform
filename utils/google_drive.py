@@ -1,6 +1,13 @@
 """
-Google Drive utility — load images on demand + upload anonymised images.
+Google Drive utility — load images on demand from Drive.
+Google Cloud Storage utility — upload anonymised images (service accounts
+  have no Drive storage quota; GCS is the correct target for uploads).
+
 Uses a GCP service account configured in .streamlit/secrets.toml.
+
+secrets.toml additions for GCS uploads:
+  [gcs]
+  bucket_name = "your-bucket-name"   # e.g. "delara-cheval-upload"
 """
 
 import io
@@ -8,11 +15,12 @@ import streamlit as st
 from PIL import Image
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload
+from google.cloud import storage as gcs_lib
 import json
 
 
-# ── Read-only service (image loading) ────────────────────────────────────────
+# ── Drive read-only service (image loading for existing modules) ──────────────
 
 @st.cache_resource
 def _get_drive_service():
@@ -23,16 +31,15 @@ def _get_drive_service():
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
-# ── Read-write service (uploads) ─────────────────────────────────────────────
+# ── GCS client (uploads — service accounts have full quota here) ──────────────
 
 @st.cache_resource
-def _get_drive_rw_service():
-    """Separate service with full drive scope for file uploads."""
+def _get_gcs_client():
     creds = service_account.Credentials.from_service_account_info(
         json.loads(st.secrets["gcp"]["service_account_json"]),
-        scopes=["https://www.googleapis.com/auth/drive"],
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
     )
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    return gcs_lib.Client(credentials=creds, project=creds.project_id)
 
 
 # ── Image loading (cached 10 min per file_id) ────────────────────────────────
@@ -51,32 +58,24 @@ def load_image_from_drive(file_id: str) -> Image.Image:
     return Image.open(buf).convert("RGB")
 
 
-# ── Upload ────────────────────────────────────────────────────────────────────
+# ── GCS Upload ────────────────────────────────────────────────────────────────
 
-def upload_pil_image_to_drive(img: Image.Image, filename: str, folder_id: str) -> str:
+def upload_pil_image_to_gcs(img: Image.Image, filename: str, bucket_name: str) -> str:
     """
-    Upload a PIL Image as PNG to a Google Drive folder.
-    Returns the file_id of the newly created file.
+    Upload a PIL Image as PNG to a GCS bucket.
+    Returns the full GCS URI: gs://bucket_name/filename
+    Service accounts have full storage quota in GCS — no Drive quota issues.
     """
-    service = _get_drive_rw_service()
+    client = _get_gcs_client()
+    bucket = client.bucket(bucket_name)
+    blob   = bucket.blob(filename)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
 
-    file_metadata = {
-        "name":    filename,
-        "parents": [folder_id],
-    }
-    media = MediaIoBaseUpload(buf, mimetype="image/png", resumable=False)
-
-    result = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id",
-    ).execute()
-
-    return result["id"]
+    blob.upload_from_file(buf, content_type="image/png")
+    return f"gs://{bucket_name}/{filename}"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
