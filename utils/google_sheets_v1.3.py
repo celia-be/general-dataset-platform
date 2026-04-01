@@ -157,25 +157,25 @@ def append_row_to_sheet(
     row_data: dict,
 ) -> int:
     """
-    Append a new data row at the bottom of the sheet (never to the right).
-    Returns the 0-based DataFrame index of the new row.
-
-    Uses ws.update() at an explicit row address instead of ws.append_row(),
-    which can mis-detect the table boundaries and write sideways when the
-    sheet has empty header columns.
+    Append a new data row to the sheet and return its 0-based DataFrame index.
+    row_data keys should match column headers; missing columns are left blank.
+    Handles pandas NA/NaN values coming from row.to_dict().
     """
     ws      = _get_worksheet(spreadsheet_id, sheet_name)
     headers = _get_headers(spreadsheet_id, sheet_name)
     row     = [_clean_value(row_data.get(h, "")) for h in headers]
 
-    # Find the exact next empty row and write there directly
+    # INSERT_ROWS forces append at the very end, even if the sheet has blank rows
+    _retry(
+        ws.append_row, row,
+        value_input_option="USER_ENTERED",
+        insert_data_option="INSERT_ROWS",
+    )
+
+    # Infer the 0-based index of the just-appended row
     all_values = _retry(ws.get_all_values)
-    next_row   = len(all_values) + 1          # 1-based row number
-    cell_range = f"A{next_row}"
+    sheet_idx  = len(all_values) - 2   # subtract header row + convert to 0-based
 
-    _retry(ws.update, cell_range, [row], value_input_option="USER_ENTERED")
-
-    sheet_idx = next_row - 2                  # 0-based DataFrame index
     load_sheet_df.clear()
     return sheet_idx
 
