@@ -120,6 +120,32 @@ def save_annotation(
     load_sheet_df.clear()
 
 
+# ── Append (extra labels) ────────────────────────────────────────────────────
+
+def append_annotation_row(
+    spreadsheet_id: str,
+    sheet_name: str,
+    source_row: dict,   # full row data from df (as dict)
+    updates: dict,      # fields to override (must include "label")
+) -> None:
+    """
+    Append a new row that duplicates source_row with overridden fields.
+    Used when an image has multiple anomaly labels.
+    Always marks the new row status=done.
+    """
+    updates["status"] = "done"
+    updates["annotated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    ws      = _get_worksheet(spreadsheet_id, sheet_name)
+    headers = _get_headers(spreadsheet_id, sheet_name)
+
+    merged  = {**source_row, **updates}
+    new_row = [str(merged.get(h, "")) for h in headers]
+
+    _retry(ws.append_row, new_row, value_input_option="USER_ENTERED")
+    load_sheet_df.clear()
+
+
 # ── Progress helpers ─────────────────────────────────────────────────────────
 
 def get_current_index(df: pd.DataFrame) -> Optional[int]:
