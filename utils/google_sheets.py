@@ -161,8 +161,25 @@ def append_row_to_sheet(
     return sheet_idx
 
 
-# Alias — keeps any module that imports the old name working
-append_annotation_row = append_row_to_sheet
+# ── append_annotation_row — horse.py multi-label feature ─────────────────────
+
+def append_annotation_row(
+    spreadsheet_id: str,
+    sheet_name: str,
+    row_data: dict,
+    override_label: str = None,
+) -> int:
+    """
+    Append a copy of row_data as a new row.
+    If override_label is provided, it replaces the 'label' key — used by
+    horse.py when the annotator adds extra labels for the same image.
+    """
+    data = dict(row_data)   # don't mutate the original
+    if override_label is not None:
+        data["label"]        = override_label
+        data["status"]       = "done"
+        data["annotated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return append_row_to_sheet(spreadsheet_id, sheet_name, data)
 
 
 # ── Progress helpers ─────────────────────────────────────────────────────────
