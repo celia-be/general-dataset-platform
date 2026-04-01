@@ -16,11 +16,8 @@ from PIL import Image
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from google.cloud import storage as gcs_lib
 import json
-
-# google-cloud-storage is only required for the cheval_upload module.
-# Imported lazily inside _get_gcs_client() so that horse/pets/data
-# keep working even if the package is not installed.
 
 
 # ── Drive read-only service (image loading for existing modules) ──────────────
@@ -38,7 +35,6 @@ def _get_drive_service():
 
 @st.cache_resource
 def _get_gcs_client():
-    from google.cloud import storage as gcs_lib   # lazy import — only for cheval_upload
     creds = service_account.Credentials.from_service_account_info(
         json.loads(st.secrets["gcp"]["service_account_json"]),
         scopes=["https://www.googleapis.com/auth/cloud-platform"],
