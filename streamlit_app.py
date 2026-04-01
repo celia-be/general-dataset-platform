@@ -90,6 +90,23 @@ st.markdown(
     }
     [role="option"]:hover { background-color: #2a2a4e !important; }
     [aria-selected="true"] { background-color: #4F8BF9 !important; color: #FFFFFF !important; }
+
+    /* Selected value inside selectbox (the visible field) */
+    [data-baseweb="select"] > div {
+        background-color: #111111 !important;
+        color: #F5F5F5 !important;
+    }
+
+    /* Text inside the selectbox */
+    [data-baseweb="select"] span {
+        color: #F5F5F5 !important;
+    }
+
+    /* Fix for single value display */
+    [data-baseweb="select"] div[role="combobox"] {
+        color: #F5F5F5 !important;
+    }
+
     /* Module cards */
     .module-card {
         background: #111111;
