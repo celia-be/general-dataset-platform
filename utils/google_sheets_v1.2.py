@@ -79,26 +79,10 @@ def load_sheet_df(spreadsheet_id: str, sheet_name: str) -> pd.DataFrame:
     Load the full sheet as a DataFrame.
     Cached for 30 s — explicitly cleared after every save_annotation() call,
     so the annotator always sees up-to-date progress immediately after saving.
-
-    Uses get_all_values() instead of get_all_records() to avoid the
-    GSpreadException raised when the header row contains empty/duplicate columns.
-    Columns with empty headers are silently dropped.
     """
     ws = _get_worksheet(spreadsheet_id, sheet_name)
-    all_values = _retry(ws.get_all_values)
-    if not all_values or len(all_values) < 1:
-        return pd.DataFrame()
-
-    headers = all_values[0]
-    rows    = all_values[1:]
-
-    # Pad every row to header length so DataFrame constructor doesn't complain
-    padded = [r + [""] * max(0, len(headers) - len(r)) for r in rows]
-    df = pd.DataFrame(padded, columns=headers)
-
-    # Drop columns whose header is empty or whitespace-only
-    df = df[[h for h in df.columns if str(h).strip()]]
-    return df
+    records = _retry(ws.get_all_records, default_blank="")
+    return pd.DataFrame(records) if records else pd.DataFrame()
 
 
 # ── Write ────────────────────────────────────────────────────────────────────
@@ -136,33 +120,30 @@ def save_annotation(
     load_sheet_df.clear()
 
 
-# ── Append (cheval_upload module — new rows created at annotation time) ───────
+# ── Append (extra labels) ────────────────────────────────────────────────────
 
-def append_row_to_sheet(
+def append_annotation_row(
     spreadsheet_id: str,
     sheet_name: str,
-    row_data: dict,
-) -> int:
+    source_row: dict,   # full row data from df (as dict)
+    updates: dict,      # fields to override (must include "label")
+) -> None:
     """
-    Append a new data row to the sheet and return its 0-based DataFrame index.
-    row_data keys should match column headers; missing columns are left blank.
+    Append a new row that duplicates source_row with overridden fields.
+    Used when an image has multiple anomaly labels.
+    Always marks the new row status=done.
     """
+    updates["status"] = "done"
+    updates["annotated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     ws      = _get_worksheet(spreadsheet_id, sheet_name)
     headers = _get_headers(spreadsheet_id, sheet_name)
-    row     = [str(row_data.get(h, "")) for h in headers]
 
-    _retry(ws.append_row, row, value_input_option="USER_ENTERED")
+    merged  = {**source_row, **updates}
+    new_row = [str(merged.get(h, "")) for h in headers]
 
-    # Infer the 0-based index of the just-appended row
-    all_values = _retry(ws.get_all_values)
-    sheet_idx  = len(all_values) - 2   # subtract header row + convert to 0-based
-
+    _retry(ws.append_row, new_row, value_input_option="USER_ENTERED")
     load_sheet_df.clear()
-    return sheet_idx
-
-
-# Alias — keeps any module that imports the old name working
-append_annotation_row = append_row_to_sheet
 
 
 # ── Progress helpers ─────────────────────────────────────────────────────────
