@@ -145,6 +145,10 @@ def append_row_to_sheet(
     return sheet_idx
 
 
+# Alias — keeps any module that imports the old name working
+append_annotation_row = append_row_to_sheet
+
+
 # ── Progress helpers ─────────────────────────────────────────────────────────
 
 def get_current_index(df: pd.DataFrame) -> Optional[int]:
