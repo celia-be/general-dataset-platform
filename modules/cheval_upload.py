@@ -9,7 +9,7 @@ Workflow:
   3. Each anonymised image is uploaded to Google Cloud Storage and registered
      as a "pending" row in Google Sheets.
   4. The user annotates images one by one from the queue: draw bounding boxes
-     and enter a free-text label.
+     and enter a free-text label, with optional zoom for precision.
   5. Save → updates the corresponding Sheets row to "done".
 
 Expected Google Sheet columns:
@@ -45,12 +45,13 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-BBOX_SIZE = 40  # half-side of bounding box in pixels (on the resized display image)
+THUMB_MAX = 500   # max side (px) for the base thumbnail shown to the annotator
+BBOX_SIZE = 15    # half-side of bounding box in pixels, in thumbnail space
 
 # Fraction of min(width, height) cropped from EACH of the top and bottom edges.
 # e.g. 0.08 → 8 % of the shorter dimension removed per edge.
-# Using the shorter dimension means the strip scales naturally regardless of
-# whether the image is portrait, landscape, or square.
+# Using the shorter dimension ensures the strip scales with the image regardless
+# of resolution or aspect ratio (portrait, landscape, square).
 ANON_CROP_RATIO = 0.08
 
 
@@ -80,26 +81,48 @@ def _anonymize(img: Image.Image) -> Image.Image:
     Remove a band from the top and bottom of the image to strip out any
     patient / medical metadata that may appear there.
 
-    The band height is: max(1, int(min(width, height) * ANON_CROP_RATIO))
-    This ensures the crop scales with the image content (not a fixed pixel
-    count) and is capped to at most 25 % of the total height so no diagnostic
-    area is accidentally removed.
+    Band height = max(1, int(min(width, height) × ANON_CROP_RATIO)).
+    Capped to 25 % of height so no diagnostic area is accidentally removed.
     """
     w, h = img.size
     crop_px = max(1, int(min(w, h) * ANON_CROP_RATIO))
-    crop_px = min(crop_px, h // 4)          # never remove more than 25 % top + bottom
+    crop_px = min(crop_px, h // 4)
     return img.crop((0, crop_px, w, h - crop_px))
 
 
-def _draw_boxes(img: Image.Image, clicks: list, box_size: int = BBOX_SIZE) -> Image.Image:
+def _make_thumbnail(img: Image.Image, max_px: int = THUMB_MAX) -> Image.Image:
+    """Return a copy scaled so the longest edge <= max_px."""
+    out = img.copy()
+    out.thumbnail((max_px, max_px), Image.LANCZOS)
+    return out
+
+
+def _zoom_image(thumb: Image.Image, zoom: float) -> Image.Image:
+    """Scale a thumbnail by the given zoom factor using high-quality resampling."""
+    if zoom == 1.0:
+        return thumb.copy()
+    w, h = thumb.size
+    return thumb.resize((int(w * zoom), int(h * zoom)), Image.LANCZOS)
+
+
+def _draw_boxes(
+    img: Image.Image,
+    clicks: list,          # coords stored in thumbnail space
+    zoom: float = 1.0,     # current display zoom
+    box_size: int = BBOX_SIZE,
+) -> Image.Image:
+    """
+    Draw bounding boxes on img (which is already at zoom resolution).
+    clicks are stored in thumbnail space → multiply by zoom to get display coords.
+    """
     out  = img.copy()
     draw = ImageDraw.Draw(out)
+    bz   = max(1, round(box_size * zoom))
+    lw   = max(1, round(2 * zoom))
     for pt in clicks:
-        x, y = pt["x"], pt["y"]
-        draw.rectangle(
-            [(x - box_size, y - box_size), (x + box_size, y + box_size)],
-            outline="red", width=3,
-        )
+        x = round(pt["x"] * zoom)
+        y = round(pt["y"] * zoom)
+        draw.rectangle([(x - bz, y - bz), (x + bz, y + bz)], outline="red", width=lw)
     return out
 
 
@@ -123,7 +146,7 @@ def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
     if not uploaded_files:
         return
 
-    n = len(uploaded_files)
+    n      = len(uploaded_files)
     plural = "s" if n > 1 else ""
     st.info(f"**{n} image{plural}** sélectionnée{plural}.")
 
@@ -135,33 +158,38 @@ def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
         for i, uploaded in enumerate(uploaded_files):
             status_text.text(f"Traitement {i + 1}/{n} : {uploaded.name}…")
 
-            img       = Image.open(uploaded).convert("RGB")
+            # ── Read ALL bytes into memory immediately ────────────────────────
+            # PIL opens file-like objects lazily; reading into BytesIO first
+            # guarantees the full image is in RAM before the next iteration,
+            # preventing silent truncation on subsequent GCS uploads.
+            raw_bytes = uploaded.read()
+            img       = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
             anon_full = _anonymize(img)
 
-            # Unique filename: original stem + timestamp + index to avoid
-            # collisions when several files are processed in the same second.
+            # Unique filename: stem + timestamp + index (avoids collisions when
+            # several files share the same upload second).
             ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
             orig_stem = uploaded.name.rsplit(".", 1)[0]
             filename  = f"{orig_stem}_anon_{ts}_{i:03d}.png"
 
-            with st.spinner(f"Upload GCS : {filename}…"):
-                file_id = upload_pil_image_to_gcs(anon_full, filename, bucket_name)
+            # ── GCS upload ────────────────────────────────────────────────────
+            file_id = upload_pil_image_to_gcs(anon_full, filename, bucket_name)
 
-            with st.spinner("Enregistrement dans Google Sheets…"):
-                sheet_idx = append_row_to_sheet(
-                    sheet_id, sheet_name,
-                    {
-                        "image_id":     file_id,
-                        "image_name":   filename,
-                        "label":        "",
-                        "bbox":         "",
-                        "status":       "pending",
-                        "uploaded_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "annotated_at": "",
-                    },
-                )
+            # ── Sheets row ────────────────────────────────────────────────────
+            sheet_idx = append_row_to_sheet(
+                sheet_id, sheet_name,
+                {
+                    "image_id":     file_id,
+                    "image_name":   filename,
+                    "label":        "",
+                    "bbox":         "",
+                    "status":       "pending",
+                    "uploaded_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "annotated_at": "",
+                },
+            )
 
-            # Serialise the anonymised image into bytes for session state.
+            # Serialise anonymised image to bytes for session state.
             buf = io.BytesIO()
             anon_full.save(buf, format="PNG")
 
@@ -190,7 +218,7 @@ def _show_annotate(sheet_id: str, sheet_name: str):
     pos   = st.session_state.cheval_queue_pos
     total = len(queue)
 
-    # All images annotated
+    # ── All images done ───────────────────────────────────────────────────────
     if pos >= total:
         st.success(f"✅ Toutes les {total} images ont été annotées !")
         if st.button("⬆️ Uploader d'autres images"):
@@ -201,14 +229,21 @@ def _show_annotate(sheet_id: str, sheet_name: str):
     current   = queue[pos]
     file_name = current["file_name"]
 
-    img         = Image.open(io.BytesIO(current["image_bytes"]))
-    img_display = img.copy()
-    img_display.thumbnail((500, 500), Image.LANCZOS)
+    img   = Image.open(io.BytesIO(current["image_bytes"]))
+    thumb = _make_thumbnail(img)         # base thumbnail (coords stored in this space)
 
-    # ── Progress bar + title ─────────────────────────────────────────────────
+    # ── Header + progress ─────────────────────────────────────────────────────
     st.progress(pos / total)
     st.markdown(f"### Étape 2 — Annotation : image **{pos + 1} / {total}**")
     st.caption(f"`{file_name}`")
+
+    # ── Zoom control (above columns so it affects both image panels) ──────────
+    zoom = st.slider(
+        "🔍 Zoom",
+        min_value=1.0, max_value=4.0, value=1.0, step=0.5,
+        key=f"cheval_zoom_{pos}",
+    )
+    img_display = _zoom_image(thumb, zoom)    # zoomed image for display
 
     col_click, col_preview, col_form = st.columns([1.3, 1.3, 1.1])
 
@@ -216,11 +251,16 @@ def _show_annotate(sheet_id: str, sheet_name: str):
     with col_click:
         st.caption("🖱️ Cliquer pour placer des boxes")
         if HAS_COORDS:
+            # Key includes zoom so the widget re-renders when zoom changes.
             coords = streamlit_image_coordinates(
-                img_display, key=f"cheval_click_img_{pos}"
+                img_display, key=f"cheval_click_img_{pos}_{zoom}"
             )
             if coords:
-                new_pt = {"x": coords["x"], "y": coords["y"]}
+                # Clicks arrive in zoomed display space → convert to thumbnail space.
+                new_pt = {
+                    "x": round(coords["x"] / zoom),
+                    "y": round(coords["y"] / zoom),
+                }
                 clicks = st.session_state.cheval_clicks
                 if not clicks or clicks[-1] != new_pt:
                     clicks.append(new_pt)
@@ -234,12 +274,12 @@ def _show_annotate(sheet_id: str, sheet_name: str):
 
     # ── Column 2 : bbox preview ───────────────────────────────────────────────
     with col_preview:
-        st.caption("👁️ Aperçu")
+        st.caption("👁️ Aperçu avec boxes")
         clicks = st.session_state.cheval_clicks
         if clicks:
-            preview = _draw_boxes(img_display, clicks)
+            preview = _draw_boxes(img_display, clicks, zoom=zoom)
             st.image(preview, width="stretch")
-            st.markdown("**Coordonnées :**")
+            st.markdown("**Coordonnées (espace thumbnail) :**")
             for i, pt in enumerate(clicks):
                 st.markdown(
                     f"• Box {i + 1} : `x={pt['x']}` `y={pt['y']}` "
@@ -249,7 +289,7 @@ def _show_annotate(sheet_id: str, sheet_name: str):
             st.image(img_display, width="stretch")
             st.caption("Aucune box pour l'instant.")
 
-    # ── Column 3 : form ───────────────────────────────────────────────────────
+    # ── Column 3 : annotation form ────────────────────────────────────────────
     with col_form:
         st.markdown("**Annotation**")
         st.markdown("---")
