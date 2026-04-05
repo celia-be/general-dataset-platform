@@ -160,22 +160,38 @@ def append_row_to_sheet(
     Append a new data row at the bottom of the sheet (never to the right).
     Returns the 0-based DataFrame index of the new row.
 
-    Uses ws.update() at an explicit row address instead of ws.append_row(),
-    which can mis-detect the table boundaries and write sideways when the
-    sheet has empty header columns.
+    Uses the Sheets API's native append endpoint (ws.append_rows) which is
+    atomic — the server determines the insertion row, so concurrent calls from
+    a tight upload loop cannot overwrite each other (no read-then-write race).
+
+    insert_data_option="INSERT_ROWS" prevents any risk of sideways writes by
+    forcing the API to always open a new row rather than fill trailing cells.
     """
+    import re as _re
+
     ws      = _get_worksheet(spreadsheet_id, sheet_name)
     headers = _get_headers(spreadsheet_id, sheet_name)
     row     = [_clean_value(row_data.get(h, "")) for h in headers]
 
-    # Find the exact next empty row and write there directly
-    all_values = _retry(ws.get_all_values)
-    next_row   = len(all_values) + 1          # 1-based row number
-    cell_range = f"A{next_row}"
+    # append_rows returns the API response; updatedRange tells us the exact row.
+    result = _retry(
+        ws.append_rows,
+        [row],
+        value_input_option="USER_ENTERED",
+        insert_data_option="INSERT_ROWS",
+        table_range="A1",
+    )
 
-    _retry(ws.update, cell_range, [row], value_input_option="USER_ENTERED")
+    # updatedRange looks like "SheetName!A5:G5" — extract the start row number.
+    updated_range = result.get("updates", {}).get("updatedRange", "")
+    m = _re.search(r":?[A-Z]+(\d+)", updated_range)
+    written_row = int(m.group(1)) if m else None
 
-    sheet_idx = next_row - 2                  # 0-based DataFrame index
+    if written_row is None:
+        # Fallback: count rows after the write (rare, but safe)
+        written_row = len(_retry(ws.get_all_values))
+
+    sheet_idx = written_row - 2               # 0-based DataFrame index (row 1 = header)
     load_sheet_df.clear()
     return sheet_idx
 
