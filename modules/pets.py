@@ -157,7 +157,7 @@ def show():
     with col_zoom:
         st.caption("🔍 Hover to zoom")
         if HAS_ZOOM:
-            image_zoom(img_display, mode="mousemove", size=500, zoom_factor=2.5)
+            image_zoom(img_display, mode="mousemove", size=500, zoom_factor=3.5)
         else:
             st.image(img_display, use_container_width=True)
 

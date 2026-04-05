@@ -45,6 +45,20 @@ def _get_gcs_client():
     )
     return gcs_lib.Client(credentials=creds, project=creds.project_id)
 
+def _make_gcs_client():
+    """
+    Create a FRESH GCS client for each upload.
+
+    The client is intentionally NOT cached here: reusing a cached client
+    across multiple uploads in the same Streamlit script run leaves the
+    internal HTTP connection pool in a dirty state after the first upload,
+    causing all subsequent uploads to silently fail or use stale connections.
+    A fresh client costs only a few milliseconds and guarantees a clean
+    connection for every request.
+    """
+    from google.cloud import storage as gcs_lib
+    creds = _get_gcs_client()
+    return gcs_lib.Client(credentials=creds, project=creds.project_id)
 
 # ── Image loading (cached 10 min per file_id) ────────────────────────────────
 
@@ -85,22 +99,21 @@ def load_image_from_drive(file_id: str) -> Image.Image:
 
 def upload_pil_image_to_gcs(img: Image.Image, filename: str, bucket_name: str) -> str:
     """
-    Upload a PIL Image as PNG to a GCS bucket.
-    Returns the full GCS URI: gs://bucket_name/filename
+    Upload a PIL Image as PNG to GCS. Returns gs://bucket_name/filename.
 
-    Uses upload_from_string(buf.getvalue()) instead of upload_from_file()
-    to avoid stream-position bugs when multiple images are uploaded in a
-    single loop — getvalue() always returns the full byte content regardless
-    of the buffer's current seek position.
+    Creates a fresh GCS client on every call to avoid connection-pool
+    state issues when called multiple times in the same script run.
+    Uses upload_from_string() so stream position is never a concern.
     """
-    client = _get_gcs_client()
+    client = _make_gcs_client()          # fresh client — no cached state
     bucket = client.bucket(bucket_name)
     blob   = bucket.blob(filename)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
+    image_bytes = buf.getvalue()         # read all bytes before any upload call
 
-    blob.upload_from_string(buf.getvalue(), content_type="image/png")
+    blob.upload_from_string(image_bytes, content_type="image/png")
     return f"gs://{bucket_name}/{filename}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
