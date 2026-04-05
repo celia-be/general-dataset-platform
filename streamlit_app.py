@@ -140,6 +140,23 @@ st.markdown(
         color: #262730 !important;
     }
     </style>
+    <style>
+    /* bouton fullscreen sur st.image */
+    button[title="View fullscreen"] {
+        background-color: rgba(0, 0, 0, 0.6) !important;
+        border-radius: 8px !important;
+    }
+
+    /* icône */
+    button[title="View fullscreen"] svg {
+        fill: white !important;
+    }
+
+    /* hover */
+    button[title="View fullscreen"]:hover {
+        background-color: rgba(0, 0, 0, 0.8) !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True,
 )
