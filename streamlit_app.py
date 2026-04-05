@@ -141,21 +141,24 @@ st.markdown(
     }
     </style>
     <style>
-    /* bouton fullscreen sur st.image */
-    button[title="View fullscreen"] {
+
+    /* bouton fullscreen (nouveau selector Streamlit) */
+    button[data-testid="stImageFullscreenButton"] {
         background-color: rgba(0, 0, 0, 0.6) !important;
         border-radius: 8px !important;
+        padding: 4px !important;
     }
 
     /* icône */
-    button[title="View fullscreen"] svg {
+    button[data-testid="stImageFullscreenButton"] svg {
         fill: white !important;
     }
 
     /* hover */
-    button[title="View fullscreen"]:hover {
-        background-color: rgba(0, 0, 0, 0.8) !important;
+    button[data-testid="stImageFullscreenButton"]:hover {
+        background-color: rgba(0, 0, 0, 0.85) !important;
     }
+
     </style>
     """,
     unsafe_allow_html=True,
