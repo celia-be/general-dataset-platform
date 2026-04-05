@@ -98,7 +98,7 @@ def _header():
             st.session_state.auth.pop("cheval_upload", None)
             st.rerun()
     with col_title:
-        st.markdown("## 🐴 Images Chevaux — Upload & Annotation")
+        st.markdown("## Images Chevaux — Upload & Annotation")
 
 
 def _clear_state():
@@ -291,7 +291,7 @@ def _show_annotate(sheet_id: str, sheet_name: str):
             st.image(img_display, use_container_width=True)
 
     with col_click:
-        st.caption("🖱️ Survoler pour zoomer · Cliquer pour placer une box")
+        st.caption("Cliquer pour placer une box")
         if HAS_COORDS:
             coords = streamlit_image_coordinates(img_display, key=f"cheval_click_img_{pos}")
             if coords:
@@ -318,10 +318,10 @@ def _show_annotate(sheet_id: str, sheet_name: str):
         else:
             st.image(img_display, width="stretch")
             st.caption("Aucune box pour l'instant.")
-        st.markdown("---")
+        #st.markdown("---")
     #with col_form:
         st.markdown("**Annotation**")
-        st.markdown("---")
+        #st.markdown("---")
         label = st.text_input(
             "✏️ Label",
             placeholder="Ex : fracture, périostite, arthrose…",

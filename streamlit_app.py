@@ -266,7 +266,7 @@ for col, mod in zip(cols, MODULES):
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown(
     "<p style='text-align:center; color:#444; font-size:0.8rem'>"
-    "Delara Vision · Annotation Platform · All data stored securely in Google Drive &amp; Sheets"
+    "Delara Vision · Annotation Platform · All data stored securely"
     "</p>",
     unsafe_allow_html=True,
 )
