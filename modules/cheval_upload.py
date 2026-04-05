@@ -1,27 +1,15 @@
 """
 Cheval Upload — Horse X-Ray Upload & Annotation module.
-
-Workflow:
-  1. Upload one or several X-ray images (PNG/JPEG) in one go.
-  2. Each image is anonymised automatically in the backend and uploaded to GCS
-     individually with its own independent HTTP request.
-  3. Each anonymised image is registered as a "pending" row in Google Sheets.
-  4. The user annotates images one by one: hover to zoom, click to place boxes,
-     enter a label, save.
-  5. Save → updates the corresponding Sheets row to "done".
-
-Expected Google Sheet columns:
-  image_id | image_name | label | bbox | status | uploaded_at | annotated_at
 """
 
 import io
 import json
+import time
 from datetime import datetime
 
 import streamlit as st
 from PIL import Image, ImageDraw
 
-from utils.google_drive import upload_pil_image_to_gcs
 from utils.google_sheets import append_row_to_sheet, save_annotation
 
 try:
@@ -32,32 +20,43 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-THUMB_MAX       = 500   # max side (px) for the display thumbnail
-BBOX_SIZE       = 15    # half-side of bounding box in px (thumbnail space)
-ANON_CROP_RATIO = 0.08  # fraction of min(w, h) cropped from each edge
+THUMB_MAX       = 500
+BBOX_SIZE       = 15
+ANON_CROP_RATIO = 0.08
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── GCS upload — fully self-contained, no shared state ───────────────────────
 
-def _header():
-    col_back, col_title = st.columns([1, 8])
-    with col_back:
-        if st.button("← Portal"):
-            _clear_state()
-            st.session_state.module = None
-            st.session_state.auth.pop("cheval_upload", None)
-            st.rerun()
-    with col_title:
-        st.markdown("## 🐴 Images Chevaux — Upload & Annotation")
+def _gcs_upload(img: Image.Image, filename: str, bucket_name: str) -> str:
+    """
+    Upload one PIL image to GCS.
+
+    Completely self-contained: creates fresh credentials AND a fresh client
+    on every single call. No caching, no shared HTTP pool, no external imports
+    that could carry state between calls.
+    """
+    import json as _json
+    from google.cloud import storage as gcs_lib
+    from google.oauth2 import service_account as sa
+
+    creds = sa.Credentials.from_service_account_info(
+        _json.loads(st.secrets["gcp"]["service_account_json"]),
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    client = gcs_lib.Client(credentials=creds, project=creds.project_id)
+    bucket = client.bucket(bucket_name)
+    blob   = bucket.blob(filename)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    blob.upload_from_string(buf.getvalue(), content_type="image/png")
+
+    return f"gs://{bucket_name}/{filename}"
 
 
-def _clear_state():
-    for key in ["cheval_step", "cheval_queue", "cheval_queue_pos", "cheval_clicks"]:
-        st.session_state.pop(key, None)
-
+# ── Image helpers ─────────────────────────────────────────────────────────────
 
 def _anonymize(img: Image.Image) -> Image.Image:
-    """Crop top+bottom bands proportional to min(w, h) to remove metadata."""
     w, h    = img.size
     crop_px = max(1, int(min(w, h) * ANON_CROP_RATIO))
     crop_px = min(crop_px, h // 4)
@@ -82,12 +81,26 @@ def _draw_boxes(img: Image.Image, clicks: list) -> Image.Image:
     return out
 
 
+# ── UI helpers ────────────────────────────────────────────────────────────────
+
+def _header():
+    col_back, col_title = st.columns([1, 8])
+    with col_back:
+        if st.button("← Portal"):
+            _clear_state()
+            st.session_state.module = None
+            st.session_state.auth.pop("cheval_upload", None)
+            st.rerun()
+    with col_title:
+        st.markdown("## 🐴 Images Chevaux — Upload & Annotation")
+
+
+def _clear_state():
+    for key in ["cheval_step", "cheval_queue", "cheval_queue_pos", "cheval_clicks"]:
+        st.session_state.pop(key, None)
+
+
 def _inject_hover_zoom():
-    """
-    Inject JS that adds a hover-zoom (2.5×) to the streamlit_image_coordinates
-    iframe. CSS transform is purely visual — offsetX/Y click coordinates stay
-    in the original image space so no conversion is needed.
-    """
     st.markdown(
         """
         <script>
@@ -99,8 +112,6 @@ def _inject_hover_zoom():
                 try {
                     var doc = iframe.contentDocument;
                     if (!doc || doc.readyState !== 'complete') return;
-                    // Target only the image-coordinates iframe:
-                    // its <body> has an <img> as a direct child.
                     var img = null;
                     for (var i = 0; i < doc.body.children.length; i++) {
                         var t = doc.body.children[i].tagName;
@@ -138,66 +149,11 @@ def _inject_hover_zoom():
     )
 
 
-# ── Upload helper — one image at a time ───────────────────────────────────────
-
-def _upload_one(uploaded, i: int, sheet_id: str, sheet_name: str, bucket_name: str) -> dict:
-    """
-    Process a single UploadedFile: anonymise → GCS → Sheets.
-    Returns a queue-entry dict on success, raises on error.
-
-    Each call is fully self-contained: it reads raw bytes immediately,
-    creates an independent image object, and calls upload_pil_image_to_gcs
-    which itself creates a fresh GCS client — no shared state between images.
-    """
-    # 1. Read bytes eagerly — avoids PIL lazy-open issues with Streamlit file objects
-    raw = uploaded.read()
-    img = Image.open(io.BytesIO(raw)).convert("RGB")
-
-    # 2. Anonymise
-    anon = _anonymize(img)
-
-    # 3. Build a unique filename
-    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem     = uploaded.name.rsplit(".", 1)[0]
-    filename = f"{stem}_anon_{ts}_{i:03d}.png"
-
-    # 4. Upload to GCS — upload_pil_image_to_gcs creates a fresh client each call
-    file_id = upload_pil_image_to_gcs(anon, filename, bucket_name)
-
-    # 5. Register in Sheets
-    sheet_idx = append_row_to_sheet(
-        sheet_id, sheet_name,
-        {
-            "image_id":     file_id,
-            "image_name":   filename,
-            "label":        "",
-            "bbox":         "",
-            "status":       "pending",
-            "uploaded_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "annotated_at": "",
-        },
-    )
-
-    # 6. Serialise anonymised image for session state
-    buf = io.BytesIO()
-    anon.save(buf, format="PNG")
-
-    return {
-        "image_bytes": buf.getvalue(),
-        "file_id":     file_id,
-        "file_name":   filename,
-        "sheet_idx":   sheet_idx,
-    }
-
-
 # ── Step 1 : Upload ───────────────────────────────────────────────────────────
 
 def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
     st.markdown("### Étape 1 — Chargement des images")
-    st.caption(
-        "Sélectionner une ou plusieurs radiographies. "
-        "L'anonymisation (suppression des bandes haut/bas) est automatique."
-    )
+    st.caption("L'anonymisation (suppression des bandes haut/bas) est automatique.")
 
     uploaded_files = st.file_uploader(
         "Sélectionner des radiographies (PNG ou JPEG)",
@@ -216,18 +172,64 @@ def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
     if not st.button(f"☁️ Uploader {n} image{plural} et annoter →", key="cheval_upload_btn"):
         return
 
+    # ── Read ALL raw bytes into memory BEFORE any network call ────────────────
+    # Streamlit UploadedFile objects can become invalid once other I/O starts.
+    # Reading everything upfront into plain (name, bytes) tuples guarantees
+    # each image is fully in RAM before we touch GCS or Sheets.
+    status_text  = st.empty()
+    status_text.text("Lecture des fichiers…")
+    files_data = []
+    for f in uploaded_files:
+        files_data.append((f.name, f.read()))   # (filename, raw bytes)
+
+    # ── Process each image independently ─────────────────────────────────────
     queue        = []
     errors       = []
     progress_bar = st.progress(0)
-    status_text  = st.empty()
 
-    for i, uploaded in enumerate(uploaded_files):
-        status_text.text(f"Upload {i + 1}/{n} : {uploaded.name}…")
+    for i, (name, raw_bytes) in enumerate(files_data):
+        status_text.text(f"Upload {i + 1}/{n} : {name}…")
+
         try:
-            entry = _upload_one(uploaded, i, sheet_id, sheet_name, bucket_name)
-            queue.append(entry)
+            # --- Decode & anonymise -------------------------------------------
+            img  = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+            anon = _anonymize(img)
+
+            ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem     = name.rsplit(".", 1)[0]
+            filename = f"{stem}_anon_{ts}_{i:03d}.png"
+
+            # --- GCS upload (fresh client, no shared state) -------------------
+            file_id = _gcs_upload(anon, filename, bucket_name)
+
+            # --- Sheets row ---------------------------------------------------
+            sheet_idx = append_row_to_sheet(
+                sheet_id, sheet_name,
+                {
+                    "image_id":     file_id,
+                    "image_name":   filename,
+                    "label":        "",
+                    "bbox":         "",
+                    "status":       "pending",
+                    "uploaded_at":  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "annotated_at": "",
+                },
+            )
+
+            # --- Serialise for session state ----------------------------------
+            buf = io.BytesIO()
+            anon.save(buf, format="PNG")
+
+            queue.append({
+                "image_bytes": buf.getvalue(),
+                "file_id":     file_id,
+                "file_name":   filename,
+                "sheet_idx":   sheet_idx,
+            })
+
         except Exception as exc:
-            errors.append(f"❌ {uploaded.name} : {exc}")
+            errors.append(f"❌ {name} : {exc}")
+
         progress_bar.progress((i + 1) / n)
 
     if errors:
@@ -239,7 +241,7 @@ def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
         return
 
     ok = len(queue)
-    status_text.text(f"✅ {ok}/{n} image{'s' if ok > 1 else ''} uploadée{'s' if ok > 1 else ''} avec succès !")
+    status_text.text(f"✅ {ok}/{n} image{'s' if ok > 1 else ''} uploadée{'s' if ok > 1 else ''} !")
 
     st.session_state.cheval_queue     = queue
     st.session_state.cheval_queue_pos = 0
@@ -248,7 +250,7 @@ def _show_upload(sheet_id: str, sheet_name: str, bucket_name: str):
     st.rerun()
 
 
-# ── Step 2 : Annotation (queue) ───────────────────────────────────────────────
+# ── Step 2 : Annotation ───────────────────────────────────────────────────────
 
 def _show_annotate(sheet_id: str, sheet_name: str):
     _inject_hover_zoom()
@@ -266,7 +268,6 @@ def _show_annotate(sheet_id: str, sheet_name: str):
 
     current   = queue[pos]
     file_name = current["file_name"]
-
     img         = Image.open(io.BytesIO(current["image_bytes"]))
     img_display = _make_thumbnail(img)
 
