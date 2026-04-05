@@ -11,7 +11,13 @@ import streamlit as st
 from PIL import Image, ImageDraw
 
 from utils.google_sheets import append_row_to_sheet, save_annotation
+from streamlit_image_zoom import image_zoom
 
+try:
+    from streamlit_image_zoom import image_zoom
+    HAS_ZOOM = True
+except ImportError:
+    HAS_ZOOM = False
 try:
     from streamlit_image_coordinates import streamlit_image_coordinates
     HAS_COORDS = True
@@ -275,7 +281,14 @@ def _show_annotate(sheet_id: str, sheet_name: str):
     st.markdown(f"### Étape 2 — Annotation : image **{pos + 1} / {total}**")
     st.caption(f"`{file_name}`")
 
-    col_click, col_preview, col_form = st.columns([1.3, 1.3, 1.1])
+    col_zoom, col_click, col_right = st.columns([1.3, 1.3, 1.1])
+    # Column 1 — zoom on hover
+    with col_zoom:
+        st.caption("🔍 Hover to zoom")
+        if HAS_ZOOM:
+            image_zoom(img_display, mode="mousemove", size=500, zoom_factor=3.5)
+        else:
+            st.image(img_display, use_container_width=True)
 
     with col_click:
         st.caption("🖱️ Survoler pour zoomer · Cliquer pour placer une box")
@@ -294,7 +307,7 @@ def _show_annotate(sheet_id: str, sheet_name: str):
             st.session_state.cheval_clicks = []
             st.rerun()
 
-    with col_preview:
+    with col_right:
         st.caption("👁️ Aperçu avec boxes")
         clicks = st.session_state.cheval_clicks
         if clicks:
@@ -305,8 +318,8 @@ def _show_annotate(sheet_id: str, sheet_name: str):
         else:
             st.image(img_display, width="stretch")
             st.caption("Aucune box pour l'instant.")
-
-    with col_form:
+        st.markdown("---")
+    #with col_form:
         st.markdown("**Annotation**")
         st.markdown("---")
         label = st.text_input(
