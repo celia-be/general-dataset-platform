@@ -161,6 +161,10 @@ def show():
         else:
             st.image(img_display, use_container_width=True)
 
+        # 👇 AJOUT
+        if st.button("🔎 Voir en grand", key=f"zoom_full_{current_idx}"):
+            st.session_state["show_fullscreen"] = True
+
     # Column 2 — click to place bboxes
     with col_click:
         st.markdown("### Mark the anomalies")
@@ -236,4 +240,12 @@ def show():
                 },
             )
             st.session_state.pets_clicks = []
+            st.rerun()
+    if st.session_state.get("show_fullscreen"):
+        st.markdown("### Fullscreen view")
+
+        st.image(img, use_container_width=True)
+
+        if st.button("❌ Fermer", key="close_fullscreen"):
+            st.session_state["show_fullscreen"] = False
             st.rerun()
