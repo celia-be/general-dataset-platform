@@ -284,7 +284,7 @@ def _show_annotate(sheet_id: str, sheet_name: str):
     col_zoom, col_click, col_right = st.columns([1.3, 1.3, 1.1])
     # Column 1 — zoom on hover
     with col_zoom:
-        st.caption("🔍 Hover to zoom")
+        st.caption("🔍 Passer la souris pour zoomer")
         if HAS_ZOOM:
             image_zoom(img_display, mode="mousemove", size=500, zoom_factor=3.5)
         else:
