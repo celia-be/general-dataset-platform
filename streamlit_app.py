@@ -142,21 +142,21 @@ st.markdown(
     </style>
     <style>
 
-    /* bouton fullscreen (nouveau selector Streamlit) */
-    button[data-testid="stImageFullscreenButton"] {
-        background-color: rgba(0, 0, 0, 0.6) !important;
+    /* cible tous les boutons overlay des images */
+    div[data-testid="stImage"] button {
+        background-color: rgba(0, 0, 0, 0.7) !important;
         border-radius: 8px !important;
-        padding: 4px !important;
+        opacity: 1 !important;
     }
 
     /* icône */
-    button[data-testid="stImageFullscreenButton"] svg {
+    div[data-testid="stImage"] button svg {
         fill: white !important;
     }
 
     /* hover */
-    button[data-testid="stImageFullscreenButton"]:hover {
-        background-color: rgba(0, 0, 0, 0.85) !important;
+    div[data-testid="stImage"] button:hover {
+        background-color: rgba(0, 0, 0, 0.9) !important;
     }
 
     </style>
