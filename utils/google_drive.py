@@ -64,11 +64,34 @@ def load_image_from_drive(file_id: str) -> Image.Image:
 
 # ── GCS Upload ────────────────────────────────────────────────────────────────
 
+# def upload_pil_image_to_gcs(img: Image.Image, filename: str, bucket_name: str) -> str:
+#     """
+#     Upload a PIL Image as PNG to a GCS bucket.
+#     Returns the full GCS URI: gs://bucket_name/filename
+#     Service accounts have full storage quota in GCS — no Drive quota issues.
+#     """
+#     client = _get_gcs_client()
+#     bucket = client.bucket(bucket_name)
+#     blob   = bucket.blob(filename)
+
+#     buf = io.BytesIO()
+#     img.save(buf, format="PNG")
+#     buf.seek(0)
+
+#     blob.upload_from_file(buf, content_type="image/png")
+#     return f"gs://{bucket_name}/{filename}"
+
+# ── GCS Upload ────────────────────────────────────────────────────────────────
+
 def upload_pil_image_to_gcs(img: Image.Image, filename: str, bucket_name: str) -> str:
     """
     Upload a PIL Image as PNG to a GCS bucket.
     Returns the full GCS URI: gs://bucket_name/filename
-    Service accounts have full storage quota in GCS — no Drive quota issues.
+
+    Uses upload_from_string(buf.getvalue()) instead of upload_from_file()
+    to avoid stream-position bugs when multiple images are uploaded in a
+    single loop — getvalue() always returns the full byte content regardless
+    of the buffer's current seek position.
     """
     client = _get_gcs_client()
     bucket = client.bucket(bucket_name)
@@ -76,11 +99,9 @@ def upload_pil_image_to_gcs(img: Image.Image, filename: str, bucket_name: str) -
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    buf.seek(0)
 
-    blob.upload_from_file(buf, content_type="image/png")
+    blob.upload_from_string(buf.getvalue(), content_type="image/png")
     return f"gs://{bucket_name}/{filename}"
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

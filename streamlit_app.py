@@ -120,6 +120,26 @@ st.markdown(
         border-color: #4F8BF9;
     }
     </style>
+    <style>
+    /* Dropzone label and drag-and-drop instruction text */
+    [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploaderDropzone"] p,
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzoneInstructions"] span,
+    [data-testid="stFileUploaderDropzoneInstructions"] div {
+        color: #262730 !important;   /* dark grey — visible on white bg  */
+    }
+    /* "Browse files" button inside the uploader */
+    [data-testid="stFileUploaderDropzone"] button {
+         color: #262730 !important;
+        border-color: #262730 !important;
+    }
+    /* File name + size text once a file is selected */
+    [data-testid="stFileUploaderFile"] span,
+    [data-testid="stFileUploaderFile"] small {
+        color: #262730 !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True,
 )
