@@ -140,26 +140,6 @@ st.markdown(
         color: #262730 !important;
     }
     </style>
-    <style>
-
-    /* cible tous les boutons overlay des images */
-    div[data-testid="stImage"] button {
-        background-color: rgba(0, 0, 0, 0.7) !important;
-        border-radius: 8px !important;
-        opacity: 1 !important;
-    }
-
-    /* icône */
-    div[data-testid="stImage"] button svg {
-        fill: white !important;
-    }
-
-    /* hover */
-    div[data-testid="stImage"] button:hover {
-        background-color: rgba(0, 0, 0, 0.9) !important;
-    }
-
-    </style>
     """,
     unsafe_allow_html=True,
 )
