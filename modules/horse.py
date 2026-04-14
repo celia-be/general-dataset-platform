@@ -18,7 +18,10 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
+import io
+
 import fitz  # pymupdf
+from PIL import Image
 
 import streamlit as st
 from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
@@ -100,7 +103,11 @@ def _pdf_viewer(report_id: str, report_name: str):
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             for page in doc:
                 pix = page.get_pixmap(dpi=300)
-                st.image(pix.tobytes("png"), use_container_width=True)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                if HAS_ZOOM:
+                    image_zoom(img, mode="mousemove", size=500, zoom_factor=4)
+                else:
+                    st.image(img, use_container_width=True)
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
