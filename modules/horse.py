@@ -18,14 +18,11 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
-import streamlit as st
-from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
+import base64
 
-try:
-    from streamlit_pdf_viewer import pdf_viewer
-    HAS_PDF_VIEWER = True
-except ImportError:
-    HAS_PDF_VIEWER = False
+import streamlit as st
+import streamlit.components.v1 as components
+from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
 from utils.google_sheets import load_sheet_df, save_annotation, append_annotation_row, get_current_index, progress_stats
 
 try:
@@ -95,28 +92,31 @@ def _default(options, saved_val):
 
 def _pdf_viewer(report_id: str, report_name: str):
     """
-    Download the PDF via the service account and render it inline using
-    streamlit-pdf-viewer (pdf.js) — no Google login required on the client.
-
-    Falls back to a download button if the viewer is not installed or the
-    download fails.
+    Download the PDF via the service account and render it inline.
+    Uses a JavaScript blob URL so the browser never needs to fetch
+    the file from Google Drive directly — no Google login required.
     """
     with st.spinner("Loading report…"):
         try:
             pdf_bytes = load_pdf_from_drive(report_id)
-            if HAS_PDF_VIEWER:
-                pdf_viewer(pdf_bytes, height=600)
-            else:
-                filename = (report_name or "rapport").strip()
-                if not filename.lower().endswith(".pdf"):
-                    filename += ".pdf"
-                st.download_button(
-                    label=f"📄 {report_name or 'Download report'}",
-                    data=pdf_bytes,
-                    file_name=filename,
-                    mime="application/pdf",
-                )
-                st.caption("Install `streamlit-pdf-viewer` for inline preview.")
+            b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+            html = f"""
+            <html><body style="margin:0;padding:0;height:600px;overflow:hidden;">
+              <embed id="pdf" width="100%" height="600px"
+                     type="application/pdf" style="border:none;">
+              <script>
+                (function() {{
+                  var b64 = "{b64}";
+                  var bin = atob(b64);
+                  var buf = new Uint8Array(bin.length);
+                  for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+                  var blob = new Blob([buf], {{type: "application/pdf"}});
+                  document.getElementById("pdf").src = URL.createObjectURL(blob);
+                }})();
+              </script>
+            </body></html>
+            """
+            components.html(html, height=610, scrolling=False)
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
