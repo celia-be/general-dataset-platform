@@ -102,7 +102,7 @@ def _pdf_viewer(report_id: str, report_name: str):
             pdf_bytes = load_pdf_from_drive(report_id)
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             for page in doc:
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5))
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
                 if HAS_ZOOM:
                     image_zoom(img, mode="mousemove", size=550, zoom_factor=2.5)
