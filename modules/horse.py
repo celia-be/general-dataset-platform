@@ -18,12 +18,14 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
+import base64
 import io
 
 import fitz  # pymupdf
 from PIL import Image
 
 import streamlit as st
+import streamlit.components.v1 as components
 from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
 from utils.google_sheets import load_sheet_df, save_annotation, append_annotation_row, get_current_index, progress_stats
 
@@ -103,11 +105,33 @@ def _pdf_viewer(report_id: str, report_name: str):
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             for page in doc:
                 pix = page.get_pixmap(dpi=300)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                if HAS_ZOOM:
-                    image_zoom(img, mode="mousemove", size=500, zoom_factor=4)
-                else:
-                    st.image(img, use_container_width=True)
+                b64 = base64.b64encode(pix.tobytes("png")).decode()
+                components.html(f"""
+                <div style="overflow:hidden;width:100%;cursor:zoom-in;">
+                  <img id="p" src="data:image/png;base64,{b64}"
+                       style="width:100%;display:block;transform-origin:0 0;">
+                </div>
+                <script>
+                  var img = document.getElementById("p");
+                  var scale = 1, zoomed = false;
+                  img.addEventListener("click", function(e) {{
+                    zoomed = !zoomed;
+                    scale = zoomed ? 2.5 : 1;
+                    img.style.cursor = zoomed ? "zoom-out" : "zoom-in";
+                    applyZoom(e);
+                  }});
+                  img.addEventListener("mousemove", function(e) {{
+                    if (zoomed) applyZoom(e);
+                  }});
+                  function applyZoom(e) {{
+                    var r = img.getBoundingClientRect();
+                    var x = ((e.clientX - r.left) / r.width  * 100).toFixed(1);
+                    var y = ((e.clientY - r.top)  / r.height * 100).toFixed(1);
+                    img.style.transformOrigin = x + "% " + y + "%";
+                    img.style.transform = "scale(" + scale + ")";
+                  }}
+                </script>
+                """, height=int(pix.height * 500 / pix.width) + 10)
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
