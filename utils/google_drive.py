@@ -66,6 +66,26 @@ def load_image_from_drive(file_id: str) -> Image.Image:
     buf.seek(0)
     return Image.open(buf).convert("RGB")
 
+def _download_drive_bytes(file_id: str) -> bytes:
+    """Download any Drive file as raw bytes via the service account."""
+    service = _get_drive_service()
+    request = service.files().get_media(fileId=file_id)
+    buf = io.BytesIO()
+    downloader = MediaIoBaseDownload(buf, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buf.getvalue()
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_pdf_from_drive(file_id: str) -> bytes:
+    """
+    Fetch a PDF from Drive and return raw bytes.
+    Uses the service account — no Google login required on the client side.
+    Cached 10 min per file_id so repeated views don't re-download.
+    """
+    return _download_drive_bytes(file_id)
+
 
 # ── GCS Upload ────────────────────────────────────────────────────────────────
 
