@@ -116,7 +116,7 @@ def _pdf_viewer(report_id: str, report_name: str):
                   var scale = 1, zoomed = false;
                   img.addEventListener("click", function(e) {{
                     zoomed = !zoomed;
-                    scale = zoomed ? 2.5 : 1;
+                    scale = zoomed ? 4 : 1;
                     img.style.cursor = zoomed ? "zoom-out" : "zoom-in";
                     applyZoom(e);
                   }});
