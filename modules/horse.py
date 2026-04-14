@@ -18,11 +18,14 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
-import base64
-
 import streamlit as st
-import streamlit.components.v1 as components
 from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
+
+try:
+    from streamlit_pdf_viewer import pdf_viewer
+    HAS_PDF_VIEWER = True
+except ImportError:
+    HAS_PDF_VIEWER = False
 from utils.google_sheets import load_sheet_df, save_annotation, append_annotation_row, get_current_index, progress_stats
 
 try:
@@ -92,21 +95,28 @@ def _default(options, saved_val):
 
 def _pdf_viewer(report_id: str, report_name: str):
     """
-    Download the PDF via the service account, encode it as base64, and embed
-    it directly in the page — no Google login required on the client side.
+    Download the PDF via the service account and render it inline using
+    streamlit-pdf-viewer (pdf.js) — no Google login required on the client.
 
-    Falls back to a download button if the embed fails.
+    Falls back to a download button if the viewer is not installed or the
+    download fails.
     """
     with st.spinner("Loading report…"):
         try:
             pdf_bytes = load_pdf_from_drive(report_id)
-            b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-            components.html(
-                f'<embed src="data:application/pdf;base64,{b64}"'
-                f' width="100%" height="590px" type="application/pdf">',
-                height=600,
-                scrolling=False,
-            )
+            if HAS_PDF_VIEWER:
+                pdf_viewer(pdf_bytes, height=600)
+            else:
+                filename = (report_name or "rapport").strip()
+                if not filename.lower().endswith(".pdf"):
+                    filename += ".pdf"
+                st.download_button(
+                    label=f"📄 {report_name or 'Download report'}",
+                    data=pdf_bytes,
+                    file_name=filename,
+                    mime="application/pdf",
+                )
+                st.caption("Install `streamlit-pdf-viewer` for inline preview.")
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
