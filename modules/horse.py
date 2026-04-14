@@ -18,10 +18,9 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
-import base64
+import fitz  # pymupdf
 
 import streamlit as st
-import streamlit.components.v1 as components
 from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
 from utils.google_sheets import load_sheet_df, save_annotation, append_annotation_row, get_current_index, progress_stats
 
@@ -92,31 +91,16 @@ def _default(options, saved_val):
 
 def _pdf_viewer(report_id: str, report_name: str):
     """
-    Download the PDF via the service account and render it inline.
-    Uses a JavaScript blob URL so the browser never needs to fetch
-    the file from Google Drive directly — no Google login required.
+    Download the PDF via the service account, convert each page to an image
+    with pymupdf, and display with st.image() — same approach as X-ray images.
     """
     with st.spinner("Loading report…"):
         try:
             pdf_bytes = load_pdf_from_drive(report_id)
-            b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-            html = f"""
-            <html><body style="margin:0;padding:0;height:600px;overflow:hidden;">
-              <embed id="pdf" width="100%" height="600px"
-                     type="application/pdf" style="border:none;">
-              <script>
-                (function() {{
-                  var b64 = "{b64}";
-                  var bin = atob(b64);
-                  var buf = new Uint8Array(bin.length);
-                  for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-                  var blob = new Blob([buf], {{type: "application/pdf"}});
-                  document.getElementById("pdf").src = URL.createObjectURL(blob);
-                }})();
-              </script>
-            </body></html>
-            """
-            components.html(html, height=610, scrolling=False)
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            for page in doc:
+                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                st.image(pix.tobytes("png"), use_container_width=True)
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
