@@ -187,9 +187,15 @@ def show():
             st.markdown("  ".join(header_parts), unsafe_allow_html=True)
             if consultation_date:
                 st.caption("⬆ Scroll to this date in the report to find the relevant section.")
-            #pdf_embed_url = f"https://drive.google.com/file/d/{report_id}/preview"
-            #components.iframe(pdf_embed_url, height=600, scrolling=True)
-            _pdf_viewer(report_id, report_name)
+            if report_name.lower().endswith(".txt"):
+                with st.spinner("Loading report…"):
+                    try:
+                        raw = load_pdf_from_drive(report_id)
+                        st.text(raw.decode("utf-8", errors="replace"))
+                    except Exception as exc:
+                        st.warning(f"Could not load report ({exc}).")
+            else:
+                _pdf_viewer(report_id, report_name)
 
         else:
             st.info("No report linked to this image.")
