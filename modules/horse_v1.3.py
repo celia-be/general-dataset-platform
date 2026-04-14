@@ -18,8 +18,6 @@ Expected Google Sheet columns:
   Consultation Date | status | annotated_at
 """
 
-import base64
-
 import streamlit as st
 import streamlit.components.v1 as components
 from utils.google_drive import load_image_from_drive, resize_for_display, load_pdf_from_drive
@@ -90,25 +88,29 @@ def _default(options, saved_val):
     except ValueError:
         return 0
 
-def _pdf_viewer(report_id: str, report_name: str):
+def _pdf_button(report_id: str, report_name: str):
     """
-    Download the PDF via the service account, encode it as base64, and embed
-    it directly in the page — no Google login required on the client side.
+    Download the PDF via the service account and offer it as a Streamlit
+    download button — no Google login required on the client side.
 
-    Falls back to a download button if the embed fails.
+    Falls back to a plain Drive link if the download fails (e.g. wrong ID).
     """
     with st.spinner("Loading report…"):
         try:
             pdf_bytes = load_pdf_from_drive(report_id)
-            b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-            components.html(
-                f'<embed src="data:application/pdf;base64,{b64}"'
-                f' width="100%" height="590px" type="application/pdf">',
-                height=600,
-                scrolling=False,
+            filename  = (report_name or "rapport").strip()
+            if not filename.lower().endswith(".pdf"):
+                filename += ".pdf"
+            st.download_button(
+                label=f"📄 {report_name or 'Download report'}",
+                data=pdf_bytes,
+                file_name=filename,
+                mime="application/pdf",
             )
         except Exception as exc:
-            st.warning(f"Could not load PDF ({exc}).")
+            # Fallback: plain link (still requires Google login if file is private,
+            # but at least shows something useful)
+            st.warning(f"Could not pre-load PDF ({exc}). Opening via Drive link instead.")
             st.link_button(
                 f"📄 {report_name or 'Open report'}",
                 f"https://drive.google.com/file/d/{report_id}/view",
@@ -195,7 +197,7 @@ def show():
                 st.caption("⬆ Scroll to this date in the report to find the relevant section.")
             #pdf_embed_url = f"https://drive.google.com/file/d/{report_id}/preview"
             #components.iframe(pdf_embed_url, height=600, scrolling=True)
-            _pdf_viewer(report_id, report_name)
+            _pdf_button(report_id, report_name)
 
         else:
             st.info("No report linked to this image.")
