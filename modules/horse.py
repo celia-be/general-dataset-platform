@@ -100,7 +100,11 @@ def _pdf_viewer(report_id: str, report_name: str):
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             for page in doc:
                 pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-                st.image(pix.tobytes("png"), use_container_width=True)
+                img_bytes = pix.tobytes("png")
+                if HAS_ZOOM:
+                    image_zoom(img_bytes, mode="mousemove", size=550, zoom_factor=2.5)
+                else:
+                    st.image(img_bytes, use_container_width=True)
         except Exception as exc:
             st.warning(f"Could not load PDF ({exc}).")
             st.link_button(
